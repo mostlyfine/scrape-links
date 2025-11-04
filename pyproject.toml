@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scrape-links"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "requests",
+  "beautifulsoup4",
+  "html2text",
+  "readability-lxml"
+]
+
+[tool.setuptools]
+py-modules = ["scrape_links"]
+
+[project.scripts]
+scrape-links = "scrape_links:main"
