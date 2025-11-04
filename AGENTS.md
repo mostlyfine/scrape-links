@@ -21,23 +21,39 @@ def scrape_links(base_url: str, max_depth: int = 0) -> Set[str]:
 
 ### 2. 本文抽出
 
-3段階のフォールバック方式：
+3段階のフォールバック方式（精度優先）：
 
 ```python
 def extract_main_content(html_content: str) -> str:
-    # 1. XPath: CSSセレクタで一般的な本文要素を探す
-    result = extract_by_xpath(html_content)
+    # 1. readability: 機械学習ベースで本文を抽出（精度優先）
+    result = extract_by_readability(html_content)
     if result: return result
 
-    # 2. readability: 機械学習ベースで本文を抽出
-    result = extract_by_readability(html_content)
+    # 2. XPath: CSSセレクタで一般的な本文要素を探す
+    result = extract_by_xpath(html_content)
     if result: return result
 
     # 3. body: 最終フォールバック
     return extract_by_body(html_content)
 ```
 
-### 3. マークダウン変換
+### 3. レート制限
+
+サーバー負荷軽減のための待機処理：
+
+```python
+def wait_before_request(max_delay: float = 3.0) -> None:
+    """各リクエスト前に1〜max_delay秒のランダム待機"""
+    delay = random.uniform(1.0, max_delay)
+    logger.debug(f"Waiting {delay:.2f} seconds before request...")
+    time.sleep(delay)
+```
+
+- **常に有効**: すべてのHTTPリクエスト前に自動実行
+- **カスタマイズ可能**: `max_delay` パラメータで最大待ち時間を変更可能
+- **デフォルト**: 1〜3秒のランダム待機
+
+### 4. マークダウン変換
 
 GFM（GitHub Flavored Markdown）形式で出力：
 
@@ -58,7 +74,7 @@ def html_to_markdown(html_content: str, url: str) -> str:
 # 目的: ウェブサイトのドキュメントを収集
 # 手順:
 # 1. トップページから深さ1で全ページを収集
-python scrape_links.py -d 1 -o https://docs.example.com/
+uvx --from . scrape-links -d 1 -o https://docs.example.com/
 
 # 2. 結果を確認
 ls -la output/docs.example.com/
@@ -69,11 +85,12 @@ ls -la output/docs.example.com/
 ```bash
 # 目的: 特定トピックの全ページを収集
 # 手順:
-# 1. 無制限で全ページを収集
-python scrape_links.py -d -1 -o -v https://example.com/knowledge/
+# 1. 無制限で全ページを収集（レート制限により安全）
+uvx --from . scrape-links -d -1 -o -v https://example.com/knowledge/
 
 # 2. ログで進捗を確認
-# DEBUG: 本文抽出: XPath (#content, 1234文字)
+# DEBUG: Waiting 2.34 seconds before request...
+# DEBUG: 本文抽出: readability (1234文字)
 ```
 
 ### タスク3: 差分更新
@@ -81,7 +98,7 @@ python scrape_links.py -d -1 -o -v https://example.com/knowledge/
 ```bash
 # 目的: 新しいページのみを追加
 # 特徴: 既存ファイルは自動的にスキップされる
-python scrape_links.py -d 1 -o https://docs.example.com/
+uvx --from . scrape-links -d 1 -o https://docs.example.com/
 # => 既存ファイルはスキップ、新規ファイルのみ保存
 ```
 
@@ -125,7 +142,7 @@ def save_page_as_markdown(url: str, output_dir: str = "output") -> bool:
 
 ```bash
 # まず深さ0でトップページのみを確認
-python scrape_links.py https://example.com/docs/
+uvx --from . scrape-links https://example.com/docs/
 # => リンク数を確認
 ```
 
@@ -133,15 +150,15 @@ python scrape_links.py https://example.com/docs/
 
 ```bash
 # 深さ1で全体の規模を把握
-python scrape_links.py -d 1 https://example.com/docs/
+uvx --from . scrape-links -d 1 https://example.com/docs/
 # => 見つかったリンク数: 44
 ```
 
 ### ステップ3: 収集
 
 ```bash
-# 適切な深さで本格収集
-python scrape_links.py -d 1 -o https://example.com/docs/
+# 適切な深さで本格収集（レート制限により自動的に適切な間隔で実行）
+uvx --from . scrape-links -d 1 -o https://example.com/docs/
 ```
 
 ### ステップ4: 検証
@@ -160,12 +177,14 @@ head output/example.com/docs/index.md
 DEBUG: スクレイピング開始: https://example.com/docs/
 DEBUG: 最大深さ: 1
 DEBUG: 取得中 (深さ 0): https://example.com/docs/
+DEBUG: Waiting 2.34 seconds before request...
 DEBUG: 取得中 (深さ 1): https://example.com/docs/page1.html
+DEBUG: Waiting 1.78 seconds before request...
 DEBUG: タイトル抽出: h1 = ページタイトル
-DEBUG: 本文抽出: XPath (#content, 1234文字)
+DEBUG: 本文抽出: readability (1234文字)
 DEBUG: 保存完了: output/example.com/docs/page1.md
 INFO: 見つかったリンク数: 44
-INFO: 保存完了: 44/44 ページ
+INFO: 保存完了: output/
 ```
 
 ## パフォーマンス考慮事項
@@ -178,7 +197,7 @@ INFO: 保存完了: 44/44 ページ
 
 ### リクエスト頻度
 
-現在の実装では順次実行です。サーバーへの負荷を考慮してください。
+現在の実装では順次実行で、各リクエスト間に1〜3秒のランダム待機が自動的に挿入されます。サーバーへの負荷を適切に制御しています。
 
 ## エラーハンドリング
 
@@ -213,4 +232,5 @@ AIエージェントは以下を理解する必要があります：
 - ✅ `-v`で詳細ログ
 - ✅ 既存ファイルは自動スキップ
 - ✅ ドメイン別にディレクトリ作成
-- ✅ 3段階の本文抽出フォールバック
+- ✅ 3段階の本文抽出フォールバック（readability優先）
+- ✅ 自動レート制限（1〜3秒のランダム待機）

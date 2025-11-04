@@ -6,10 +6,11 @@ A Python script that recursively crawls pages under a specified URL and saves th
 
 - **Recursive Link Collection**: Automatically explores pages under the specified URL
 - **Depth Control**: Specify page hierarchy depth (0 to unlimited)
-- **High-Quality Content Extraction**: 3-stage fallback using XPath, readability, and body
+- **High-Quality Content Extraction**: 3-stage fallback (readability → CSS selectors → body)
 - **Markdown Conversion**: Converts HTML to GitHub Flavored Markdown
 - **Domain-Based Organization**: Output is organized by domain directory
 - **Incremental Execution**: Existing files are automatically skipped
+- **Rate Limiting**: Random delay (1-3 seconds) between requests to reduce server load
 
 ## Installation
 
@@ -68,6 +69,34 @@ Run the script explicitly with the virtual environment interpreter (optional but
 ```
 
 ## Usage
+
+### Using uvx (Recommended)
+
+You can run this tool without installing it locally using `uvx`:
+
+```bash
+# Fetch only the specified page (default: depth 0)
+uvx --from . scrape-links https://example.com/docs/
+
+# Depth 1 (immediate child pages)
+uvx --from . scrape-links -d 1 https://example.com/docs/
+
+# Save as Markdown
+uvx --from . scrape-links -d 1 -o https://example.com/docs/
+
+# Fetch all child pages with verbose logging
+uvx --from . scrape-links -d -1 -o -v https://example.com/docs/
+```
+
+**Note**: Use `--from .` when running from the local project directory. `uvx` will automatically handle dependencies in an isolated environment. If you don't have `uvx` installed, you can install it via:
+
+```bash
+# Install uv (which includes uvx)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Or via pip
+pip install uv
+```
 
 ### Basic Usage
 
@@ -144,11 +173,18 @@ Content...
 
 ## Content Extraction Algorithm
 
-Content is extracted using a 3-stage fallback approach:
+Content is extracted using a 3-stage fallback approach (prioritizing accuracy):
 
-1. **XPath Extraction**: Extract using common selectors (`main`, `article`, `#content`, etc.)
-2. **readability**: Automatic extraction using readability-lxml
+1. **readability-lxml**: Heuristic-based extraction using machine learning (prioritized for better accuracy)
+2. **CSS Selectors**: Extract using common selectors (`main`, `article`, `#content`, etc.)
 3. **body Element**: Use entire body element as final fallback
+
+### Rate Limiting
+
+To reduce server load, the script automatically waits 1-3 seconds (random) between each request. This behavior is:
+- **Always enabled**: No option to disable
+- **Configurable**: Can be customized via `wait_before_request(max_delay)` function
+- **Logged**: Use `-v` to see actual wait times
 
 ## Examples
 
