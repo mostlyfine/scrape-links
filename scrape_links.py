@@ -79,11 +79,39 @@ def calculate_depth(base_url: str, target_url: str) -> int:
     return relative_path.count('/') + 1 if relative_path else 0
 
 
-def fetch_links_from_page(url: str) -> Set[str]:
-    """Extract absolute links from a single page. Returns a set of normalized URLs."""
+def save_page_as_markdown(url: str, html_content: str, output_dir: str = "output") -> None:
+    """Save a web page as markdown file."""
+    filepath = url_to_filepath(url, output_dir)
+    if not filepath.exists():
+        try:
+            page_title = extract_page_title(html_content)
+            markdown_content = html_to_markdown(html_content, url)
+
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(f"# [{page_title}]({url})\n\n")
+                f.write(markdown_content)
+
+            logger.debug(f"Saved file: {filepath}")
+        except Exception as e:
+            logger.warning(f"Failed to save markdown for {url} - {e}")
+    else:
+        logger.debug(f"Skip (already exists): {filepath}")
+
+
+def fetch_links_from_page(url: str, save_markdown: bool = False, output_dir: str = "output") -> Set[str]:
+    """Extract absolute links from a single page. Optionally save as markdown. Returns a set of normalized URLs."""
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
+
+        # Save as markdown if requested (before parsing, to use the same fetched content)
+        if save_markdown:
+            logger.debug(f"Saving page as markdown: {url}")
+            save_page_as_markdown(url, response.text, output_dir)
+
+        # Extract links from the same response
         soup = BeautifulSoup(response.content, 'html.parser')
 
         links = set()
@@ -262,39 +290,7 @@ def html_to_markdown(html_content: str, url: str) -> str:
     return markdown
 
 
-def save_page_as_markdown(url: str, output_dir: str = "output") -> bool:
-    """Fetch a page and save it as markdown (skip if file already exists). Returns success flag."""
-    filepath = url_to_filepath(url, output_dir)
-
-    if filepath.exists():
-        logger.debug(f"Skip (already exists): {filepath}")
-        return True
-
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-
-        page_title = extract_page_title(response.text)
-        markdown_content = html_to_markdown(response.text, url)
-
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(f"# [{page_title}]({url})\n\n")
-            f.write(markdown_content)
-
-        logger.debug(f"Saved file: {filepath}")
-        return True
-
-    except requests.exceptions.RequestException as e:
-        logger.warning(f"Failed to save page {url} - {e}")
-        return False
-    except Exception as e:
-        logger.warning(f"Unexpected error while saving {url} - {e}")
-        return False
-
-
-def scrape_links(base_url: str, max_depth: int = 0) -> Set[str]:
+def scrape_links(base_url: str, max_depth: int = 0, save_markdown: bool = False, output_dir: str = "output") -> Set[str]:
     """Recursively scrape links under the given base URL up to max_depth (-1 = unlimited)."""
     visited = set()
     all_links = set()
@@ -320,7 +316,8 @@ def scrape_links(base_url: str, max_depth: int = 0) -> Set[str]:
         if not is_unlimited and current_depth >= max_depth:
             continue
 
-        links = fetch_links_from_page(current_url)
+        links = fetch_links_from_page(
+            current_url, save_markdown=save_markdown, output_dir=output_dir)
 
         for link in links:
             if link not in visited and is_child_path(base_url, link):
@@ -391,7 +388,8 @@ Examples:
         sys.exit(1)
 
     try:
-        links = scrape_links(args.url, args.depth)
+        links = scrape_links(args.url, args.depth,
+                             save_markdown=args.output, output_dir="output")
     except KeyboardInterrupt:
         logger.error("Interrupted")
         sys.exit(1)
@@ -402,15 +400,7 @@ Examples:
         print(link)
 
     if args.output:
-        logger.info("Saving pages as markdown...")
-
-        success_count = 0
-        for link in links:
-            if save_page_as_markdown(link):
-                success_count += 1
-
-    logger.info(f"Saved: {success_count}/{len(links)} pages")
-    logger.info("Destination: output/")
+        logger.info("Pages saved to: output/")
 
 
 if __name__ == "__main__":
