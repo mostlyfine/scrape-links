@@ -74,6 +74,8 @@ Run the script explicitly with the virtual environment interpreter (optional but
 
 You can run this tool without installing it locally using `uvx`:
 
+#### From Local Directory
+
 ```bash
 # Fetch only the specified page (default: depth 0)
 uvx --from . scrape-links https://example.com/docs/
@@ -88,7 +90,28 @@ uvx --from . scrape-links -d 1 -o https://example.com/docs/
 uvx --from . scrape-links -d -1 -o -v https://example.com/docs/
 ```
 
-**Note**: Use `--from .` when running from the local project directory. `uvx` will automatically handle dependencies in an isolated environment. If you don't have `uvx` installed, you can install it via:
+#### From GitHub Repository
+
+Run directly from GitHub without cloning:
+
+```bash
+# Run from GitHub repository (default: depth 0)
+uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links https://example.com/docs/
+
+# With depth 1 and markdown output
+uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links -d 1 -o https://example.com/docs/
+
+# Verbose logging and unlimited depth
+uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links -d -1 -o -v https://example.com/docs/
+
+# From specific branch (e.g., develop)
+uvx --from git+https://github.com/mostlyfine/scrape-links@develop scrape-links https://example.com/docs/
+
+# From specific commit
+uvx --from git+https://github.com/mostlyfine/scrape-links@abc1234 scrape-links https://example.com/docs/
+```
+
+**Note**: `uvx` will automatically handle dependencies in an isolated environment. If you don't have `uvx` installed, you can install it via:
 
 ```bash
 # Install uv (which includes uvx)
@@ -188,7 +211,35 @@ To reduce server load, the script automatically waits 1-3 seconds (random) betwe
 
 ## Examples
 
+### Running from GitHub (No Installation Required)
+
+```bash
+# Fetch a blog post
+uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links \
+  -o https://syu-m-5151.hatenablog.com/entry/2025/11/03/020316
+
+# Fetch documentation site (depth 1)
+uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links \
+  -d 1 -o https://docs.example.com/
+```
+
 ### Fetching Claude Code Documentation
+
+```bash
+# Overview page only
+uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links \
+  https://docs.claude.com/en/docs/claude-code/overview
+
+# All sections
+uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links \
+  -d 1 -o https://docs.claude.com/en/docs/claude-code/overview
+
+# With verbose logging
+uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links \
+  -d 1 -o -v https://docs.claude.com/en/docs/claude-code/overview
+```
+
+### Local Development
 
 ```bash
 # Overview page only
