@@ -11,6 +11,8 @@ Features:
 import argparse
 import logging
 import sys
+import time
+import random
 from collections import deque
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -22,6 +24,13 @@ import html2text
 from readability import Document
 
 logger = logging.getLogger(__name__)
+
+
+def wait_before_request(max_delay: float = 3.0) -> None:
+    """Wait for a random duration (1 to max_delay seconds) before making a request."""
+    delay = random.uniform(1.0, max_delay)
+    logger.debug(f"Waiting {delay:.2f} seconds before request...")
+    time.sleep(delay)
 
 
 def normalize_url(url: str) -> str:
@@ -102,7 +111,9 @@ def save_page_as_markdown(url: str, html_content: str, output_dir: str = "output
 
 def fetch_links_from_page(url: str, save_markdown: bool = False, output_dir: str = "output") -> Set[str]:
     """Extract absolute links from a single page. Optionally save as markdown. Returns a set of normalized URLs."""
+
     try:
+        wait_before_request()
         response = requests.get(url, timeout=10)
         response.raise_for_status()
 
