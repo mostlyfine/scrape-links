@@ -1,0 +1,216 @@
+# AIエージェント向けガイド
+
+このドキュメントは、AIエージェントが本スクリプトを効果的に使用するための情報を提供します。
+
+## スクリプト概要
+
+`scrape_links.py`は、Webページを収集してマークダウン形式に変換するツールです。
+
+## 主要機能
+
+### 1. リンク収集
+
+指定されたURL配下のページリンクを再帰的に収集します。
+
+```python
+# 実装の要点
+def scrape_links(base_url: str, max_depth: int = 0) -> Set[str]:
+    # BFS（幅優先探索）で子ページを探索
+    # -1で無制限、0以上で深さ制限
+```
+
+### 2. 本文抽出
+
+3段階のフォールバック方式：
+
+```python
+def extract_main_content(html_content: str) -> str:
+    # 1. XPath: CSSセレクタで一般的な本文要素を探す
+    result = extract_by_xpath(html_content)
+    if result: return result
+
+    # 2. readability: 機械学習ベースで本文を抽出
+    result = extract_by_readability(html_content)
+    if result: return result
+
+    # 3. body: 最終フォールバック
+    return extract_by_body(html_content)
+```
+
+### 3. マークダウン変換
+
+GFM（GitHub Flavored Markdown）形式で出力：
+
+```python
+def html_to_markdown(html_content: str, url: str) -> str:
+    h = html2text.HTML2Text()
+    h.wrap_links = False        # リンクを折り返さない
+    h.wrap_list_items = False   # リストを折り返さない
+    h.unicode_snob = True       # Unicode優先
+    h.escape_snob = True        # エスケープ最小化
+```
+
+## エージェントによる使用例
+
+### タスク1: ドキュメント収集
+
+```bash
+# 目的: ウェブサイトのドキュメントを収集
+# 手順:
+# 1. トップページから深さ1で全ページを収集
+python scrape_links.py -d 1 -o https://docs.example.com/
+
+# 2. 結果を確認
+ls -la output/docs.example.com/
+```
+
+### タスク2: 知識ベース構築
+
+```bash
+# 目的: 特定トピックの全ページを収集
+# 手順:
+# 1. 無制限で全ページを収集
+python scrape_links.py -d -1 -o -v https://example.com/knowledge/
+
+# 2. ログで進捗を確認
+# DEBUG: 本文抽出: XPath (#content, 1234文字)
+```
+
+### タスク3: 差分更新
+
+```bash
+# 目的: 新しいページのみを追加
+# 特徴: 既存ファイルは自動的にスキップされる
+python scrape_links.py -d 1 -o https://docs.example.com/
+# => 既存ファイルはスキップ、新規ファイルのみ保存
+```
+
+## エージェントが知るべき制約
+
+### 1. 同一ドメイン制限
+
+スクリプトは指定されたURLと同じドメイン内のみを対象とします：
+
+```python
+def is_child_path(base_url: str, target_url: str) -> bool:
+    # ドメインが異なる場合はFalse
+    if base_parsed.netloc != target_parsed.netloc:
+        return False
+```
+
+### 2. パス階層制限
+
+指定されたURL配下のパスのみを対象とします：
+
+```
+https://example.com/docs/guide/ を指定した場合:
+✓ https://example.com/docs/guide/page1.html
+✓ https://example.com/docs/guide/section/page2.html
+✗ https://example.com/docs/other/page.html
+✗ https://example.com/blog/
+```
+
+### 3. 既存ファイルの扱い
+
+```python
+def save_page_as_markdown(url: str, output_dir: str = "output") -> bool:
+    if filepath.exists():
+        logger.debug(f"スキップ（既存）: {filepath}")
+        return True
+```
+
+## 推奨ワークフロー
+
+### ステップ1: 探索
+
+```bash
+# まず深さ0でトップページのみを確認
+python scrape_links.py https://example.com/docs/
+# => リンク数を確認
+```
+
+### ステップ2: サンプリング
+
+```bash
+# 深さ1で全体の規模を把握
+python scrape_links.py -d 1 https://example.com/docs/
+# => 見つかったリンク数: 44
+```
+
+### ステップ3: 収集
+
+```bash
+# 適切な深さで本格収集
+python scrape_links.py -d 1 -o https://example.com/docs/
+```
+
+### ステップ4: 検証
+
+```bash
+# 出力を確認
+find output -name "*.md" | wc -l
+head output/example.com/docs/index.md
+```
+
+## デバッグ情報の活用
+
+`-v`オプションで詳細ログが出力されます：
+
+```
+DEBUG: スクレイピング開始: https://example.com/docs/
+DEBUG: 最大深さ: 1
+DEBUG: 取得中 (深さ 0): https://example.com/docs/
+DEBUG: 取得中 (深さ 1): https://example.com/docs/page1.html
+DEBUG: タイトル抽出: h1 = ページタイトル
+DEBUG: 本文抽出: XPath (#content, 1234文字)
+DEBUG: 保存完了: output/example.com/docs/page1.md
+INFO: 見つかったリンク数: 44
+INFO: 保存完了: 44/44 ページ
+```
+
+## パフォーマンス考慮事項
+
+### 推奨される深さ設定
+
+- **小規模サイト（<100ページ）**: `-d -1` (無制限)
+- **中規模サイト（100-1000ページ）**: `-d 2` または `-d 3`
+- **大規模サイト（>1000ページ）**: `-d 1` で段階的に
+
+### リクエスト頻度
+
+現在の実装では順次実行です。サーバーへの負荷を考慮してください。
+
+## エラーハンドリング
+
+### よくあるエラーと対処
+
+1. **タイムアウト**: ネットワーク接続を確認
+2. **HTTP 403/404**: URLやアクセス権限を確認
+3. **本文抽出失敗**: `-v`でどの抽出方法が使用されたか確認
+
+### ログレベル
+
+- `INFO`: 重要な情報のみ（デフォルト）
+- `DEBUG`: 詳細な処理内容（`-v`オプション）
+- `WARNING`: 警告（一部ページの失敗など）
+- `ERROR`: エラー（実行停止）
+
+## 拡張性
+
+本スクリプトは以下の拡張が可能です：
+
+1. **新しい抽出メソッドの追加**: `extract_by_*`関数を追加
+2. **出力形式のカスタマイズ**: `html_to_markdown`を修正
+3. **並列処理**: `asyncio`や`concurrent.futures`を使用
+
+## まとめ
+
+AIエージェントは以下を理解する必要があります：
+
+- ✅ 深さ0がデフォルト（安全）
+- ✅ `-d -1`で無制限収集
+- ✅ `-o`でマークダウン保存
+- ✅ `-v`で詳細ログ
+- ✅ 既存ファイルは自動スキップ
+- ✅ ドメイン別にディレクトリ作成
+- ✅ 3段階の本文抽出フォールバック

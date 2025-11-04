@@ -1,0 +1,75 @@
+# Python build / runtime artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Distribution / packaging
+build/
+dist/
+.eggs/
+*.egg-info/
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+.coverage
+.coverage.*
+.cache/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Type checker / linters
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# OS / Editor metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Scrap output (remove if you want to version the results)
+output/
+
+# HTML conversion temp files
+*.html.tmp
+
+# Readability / parsing temp
+readability/tmp/
+
+# Environment variables / secrets (add names explicitly if created)
+*.env
+.env.*
+
+# Mac specific
+.AppleDouble
+.LSOverride
+
+# Local lock files (add if used)
+poetry.lock
+Pipfile
+Pipfile.lock
+
+# Misc
+*.swp
