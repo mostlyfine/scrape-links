@@ -109,16 +109,16 @@ def save_page_as_markdown(url: str, html_content: str, output_dir: str = "output
         logger.debug(f"Skip (already exists): {filepath}")
 
 
-def fetch_links_from_page(url: str, save_markdown: bool = False, output_dir: str = "output") -> Set[str]:
-    """Extract absolute links from a single page. Optionally save as markdown. Returns a set of normalized URLs."""
+def fetch_links_from_page(url: str, output_dir: Optional[str] = None) -> Set[str]:
+    """Extract absolute links from a single page and optionally save as markdown."""
 
     try:
         wait_before_request()
         response = requests.get(url, timeout=10)
         response.raise_for_status()
 
-        # Save as markdown if requested (before parsing, to use the same fetched content)
-        if save_markdown:
+        # Save as markdown if an output directory is provided (before parsing to reuse content)
+        if output_dir is not None:
             logger.debug(f"Saving page as markdown: {url}")
             save_page_as_markdown(url, response.text, output_dir)
 
@@ -301,7 +301,7 @@ def html_to_markdown(html_content: str, url: str) -> str:
     return markdown
 
 
-def scrape_links(base_url: str, max_depth: int = 0, save_markdown: bool = False, output_dir: str = "output") -> Set[str]:
+def scrape_links(base_url: str, max_depth: int = 0, output_dir: Optional[str] = None) -> Set[str]:
     """Recursively scrape links under the given base URL up to max_depth (-1 = unlimited)."""
     visited = set()
     all_links = set()
@@ -324,11 +324,11 @@ def scrape_links(base_url: str, max_depth: int = 0, save_markdown: bool = False,
 
         logger.debug(f"Fetching (depth {current_depth}): {current_url}")
 
+        links = fetch_links_from_page(
+            current_url, output_dir=output_dir)
+
         if not is_unlimited and current_depth >= max_depth:
             continue
-
-        links = fetch_links_from_page(
-            current_url, save_markdown=save_markdown, output_dir=output_dir)
 
         for link in links:
             if link not in visited and is_child_path(base_url, link):
@@ -356,7 +356,7 @@ Examples:
   %(prog)s -d -1 https://example.com/docs/
 
   # Save extracted pages as markdown
-  %(prog)s -d 1 -o https://example.com/docs/
+  %(prog)s -d 1 -o saved_docs https://example.com/docs/
 
   # Verbose logging + save
   %(prog)s -d -1 -o -v https://example.com/docs/
@@ -372,8 +372,10 @@ Examples:
     )
     parser.add_argument(
         '-o', '--output',
-        action='store_true',
-        help='Save extracted pages as markdown under output/'
+        nargs='?',
+        const='output',
+        metavar='DIR',
+        help='Save extracted pages as markdown under DIR (default when omitted: output)'
     )
     parser.add_argument(
         '-v', '--verbose',
@@ -399,8 +401,7 @@ Examples:
         sys.exit(1)
 
     try:
-        links = scrape_links(args.url, args.depth,
-                             save_markdown=args.output, output_dir="output")
+        links = scrape_links(args.url, args.depth, output_dir=args.output)
     except KeyboardInterrupt:
         logger.error("Interrupted")
         sys.exit(1)
@@ -411,7 +412,7 @@ Examples:
         print(link)
 
     if args.output:
-        logger.info("Pages saved to: output/")
+        logger.info(f"Pages saved to: {args.output.rstrip('/')}/")
 
 
 if __name__ == "__main__":

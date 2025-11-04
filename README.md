@@ -65,7 +65,7 @@ deactivate
 Run the script explicitly with the virtual environment interpreter (optional but explicit):
 
 ```bash
-./.venv/bin/python scrape_links.py -d 1 -o https://example.com/docs/
+./.venv/bin/python scrape_links.py -d 1 -o saved_docs https://example.com/docs/
 ```
 
 ## Usage
@@ -83,8 +83,8 @@ uvx --from . scrape-links https://example.com/docs/
 # Depth 1 (immediate child pages)
 uvx --from . scrape-links -d 1 https://example.com/docs/
 
-# Save as Markdown
-uvx --from . scrape-links -d 1 -o https://example.com/docs/
+# Save as Markdown to a custom directory
+uvx --from . scrape-links -d 1 -o saved_docs https://example.com/docs/
 
 # Fetch all child pages with verbose logging
 uvx --from . scrape-links -d -1 -o -v https://example.com/docs/
@@ -98,8 +98,8 @@ Run directly from GitHub without cloning:
 # Run from GitHub repository (default: depth 0)
 uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links https://example.com/docs/
 
-# With depth 1 and markdown output
-uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links -d 1 -o https://example.com/docs/
+# With depth 1 and markdown output saved under "docs_dump"
+uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links -d 1 -o docs_dump https://example.com/docs/
 
 # Verbose logging and unlimited depth
 uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links -d -1 -o -v https://example.com/docs/
@@ -137,12 +137,14 @@ python scrape_links.py -d -1 https://example.com/docs/
 ### Save as Markdown
 
 ```bash
-# Save extracted pages as markdown
-python scrape_links.py -d 1 -o https://example.com/docs/
+# Save extracted pages as markdown into "saved_docs"
+python scrape_links.py -d 1 -o saved_docs https://example.com/docs/
 
-# Save with verbose logging
+# Save with verbose logging (default output directory)
 python scrape_links.py -d -1 -o -v https://example.com/docs/
 ```
+
+`-o` オプションの引数を省略すると、既定の `output/` ディレクトリに保存されます。
 
 ## Options
 
@@ -150,7 +152,7 @@ python scrape_links.py -d -1 -o -v https://example.com/docs/
 |--------|-------------|
 | `url` | Base URL to scrape (required) |
 | `-d, --depth N` | Maximum depth (default: 0, -1 for unlimited) |
-| `-o, --output` | Save extracted pages as markdown |
+| `-o [DIR], --output [DIR]` | Save extracted pages as markdown under `DIR`; omit `DIR` to use the default `output/` |
 | `-v, --verbose` | Show verbose logs |
 | `-h, --help` | Show help message |
 
@@ -216,11 +218,11 @@ To reduce server load, the script automatically waits 1-3 seconds (random) betwe
 ```bash
 # Fetch a blog post
 uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links \
-  -o https://syu-m-5151.hatenablog.com/entry/2025/11/03/020316
+  -o blog_posts https://syu-m-5151.hatenablog.com/entry/2025/11/03/020316
 
 # Fetch documentation site (depth 1)
 uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links \
-  -d 1 -o https://docs.example.com/
+  -d 1 -o docs_dump https://docs.example.com/
 ```
 
 ### Fetching Claude Code Documentation
@@ -232,7 +234,7 @@ uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links \
 
 # All sections
 uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links \
-  -d 1 -o https://docs.claude.com/en/docs/claude-code/overview
+  -d 1 -o claude_docs https://docs.claude.com/en/docs/claude-code/overview
 
 # With verbose logging
 uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links \
@@ -246,7 +248,7 @@ uvx --from git+https://github.com/mostlyfine/scrape-links scrape-links \
 python scrape_links.py https://docs.claude.com/en/docs/claude-code/overview
 
 # All sections
-python scrape_links.py -d 1 -o https://docs.claude.com/en/docs/claude-code/overview
+python scrape_links.py -d 1 -o claude_docs https://docs.claude.com/en/docs/claude-code/overview
 
 # With verbose logging
 python scrape_links.py -d 1 -o -v https://docs.claude.com/en/docs/claude-code/overview
