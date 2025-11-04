@@ -269,12 +269,12 @@ def extract_by_body(html_content: str) -> str:
 
 def extract_main_content(html_content: str) -> str:
     """High-level main content extraction pipeline (selector > readability > body fallback)."""
-    # 1. Selector-based attempt
-    result = extract_by_xpath(html_content)
+    # 1. Readability heuristic
+    result = extract_by_readability(html_content)
     if result:
         return result
-    # 2. Readability heuristic
-    result = extract_by_readability(html_content)
+    # 2. Selector-based attempt
+    result = extract_by_xpath(html_content)
     if result:
         return result
     # 3. Body fallback
