@@ -11,6 +11,7 @@ Features:
 
 import argparse
 import logging
+import os
 import sys
 import time
 import random
@@ -142,7 +143,9 @@ def fetch_html_content(url: str, driver: Optional[webdriver.Chrome] = None) -> s
         time.sleep(2)
         return driver.page_source
     else:
-        response = requests.get(url, timeout=10)
+        user_agent = os.getenv('USER_AGENT')
+        headers = {'User-Agent': user_agent} if user_agent else {}
+        response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         return response.text
 
