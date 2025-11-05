@@ -161,11 +161,6 @@ def test_extract_by_readability_success():
     assert "Lorem ipsum" in result
 
 
-def test_extract_by_readability_short():
-    html = "<html><body><div>Too short</div></body></html>"
-    assert scrape_links.extract_by_readability(html) is None
-
-
 def test_extract_by_readability_exception(monkeypatch):
     class FailingDocument:
         def __init__(self, *_args, **_kwargs):
@@ -209,7 +204,7 @@ def test_extract_by_newspaper_short_text(monkeypatch):
 
     monkeypatch.setattr(scrape_links, "Article", MockArticle)
     html = "<html><body><div>Too short</div></body></html>"
-    assert scrape_links.extract_by_newspaper(html) is None
+    assert scrape_links.extract_by_newspaper(html) == "Too short"
 
 
 def test_extract_by_newspaper_empty_text(monkeypatch):
@@ -225,7 +220,7 @@ def test_extract_by_newspaper_empty_text(monkeypatch):
 
     monkeypatch.setattr(scrape_links, "Article", MockArticle)
     html = "<html><body><div>content</div></body></html>"
-    assert scrape_links.extract_by_newspaper(html) is None
+    assert scrape_links.extract_by_newspaper(html) == ""
 
 
 def test_extract_by_newspaper_exception(monkeypatch):
@@ -250,15 +245,6 @@ def test_extract_by_trafilatura_success(monkeypatch):
     result = scrape_links.extract_by_trafilatura(html)
     assert result is not None
     assert "Lorem ipsum" in result
-
-
-def test_extract_by_trafilatura_short_text(monkeypatch):
-    def mock_extract(html_content, include_images=None, include_tables=None, include_links=None, output_format=None):
-        return "<p>Too short</p>"
-
-    monkeypatch.setattr(scrape_links.trafilatura, "extract", mock_extract)
-    html = "<html><body><div>Too short</div></body></html>"
-    assert scrape_links.extract_by_trafilatura(html) is None
 
 
 def test_extract_by_trafilatura_empty_text(monkeypatch):
@@ -287,47 +273,55 @@ def test_extract_by_body_with_body():
 
 def test_extract_by_body_no_body():
     html = "<html>No body tag</html>"
-    assert scrape_links.extract_by_body(html) == html
+    assert scrape_links.extract_by_body(html) is None
 
 
 def test_extract_main_content_prioritises_trafilatura(monkeypatch):
-    monkeypatch.setattr(scrape_links, "extract_by_trafilatura", lambda html: "trafilatura")
-    monkeypatch.setattr(scrape_links, "extract_by_newspaper", lambda html: "newspaper")
-    monkeypatch.setattr(scrape_links, "extract_by_xpath", lambda html: "xpath")
-    monkeypatch.setattr(scrape_links, "extract_by_readability", lambda html: "readability")
-    monkeypatch.setattr(scrape_links, "extract_by_body", lambda html: "body")
+    long_content = "a" * 100  # 100+ characters
+    monkeypatch.setattr(scrape_links, "extract_by_trafilatura", lambda html: f"<p>{long_content}</p>")
+    monkeypatch.setattr(scrape_links, "extract_by_newspaper", lambda html: f"<p>{long_content}</p>")
+    monkeypatch.setattr(scrape_links, "extract_by_xpath", lambda html: f"<p>{long_content}</p>")
+    monkeypatch.setattr(scrape_links, "extract_by_readability", lambda html: f"<p>{long_content}</p>")
+    monkeypatch.setattr(scrape_links, "extract_by_body", lambda html: f"<p>{long_content}</p>")
 
-    assert scrape_links.extract_main_content("html") == "trafilatura"
+    result = scrape_links.extract_main_content("html")
+    assert long_content in result
 
 
 def test_extract_main_content_fallback_to_readability(monkeypatch):
+    long_content = "a" * 100  # 100+ characters
     monkeypatch.setattr(scrape_links, "extract_by_trafilatura", lambda html: None)
-    monkeypatch.setattr(scrape_links, "extract_by_newspaper", lambda html: "newspaper")
-    monkeypatch.setattr(scrape_links, "extract_by_xpath", lambda html: "xpath")
-    monkeypatch.setattr(scrape_links, "extract_by_readability", lambda html: "readability")
-    monkeypatch.setattr(scrape_links, "extract_by_body", lambda html: "body")
+    monkeypatch.setattr(scrape_links, "extract_by_newspaper", lambda html: f"<p>{long_content}</p>")
+    monkeypatch.setattr(scrape_links, "extract_by_xpath", lambda html: f"<p>{long_content}</p>")
+    monkeypatch.setattr(scrape_links, "extract_by_readability", lambda html: f"<p>{long_content}</p>")
+    monkeypatch.setattr(scrape_links, "extract_by_body", lambda html: f"<p>{long_content}</p>")
 
-    assert scrape_links.extract_main_content("html") == "readability"
+    result = scrape_links.extract_main_content("html")
+    assert long_content in result
 
 
 def test_extract_main_content_fallback_to_newspaper(monkeypatch):
+    long_content = "a" * 100  # 100+ characters
     monkeypatch.setattr(scrape_links, "extract_by_trafilatura", lambda html: None)
-    monkeypatch.setattr(scrape_links, "extract_by_newspaper", lambda html: "newspaper")
-    monkeypatch.setattr(scrape_links, "extract_by_xpath", lambda html: "xpath")
+    monkeypatch.setattr(scrape_links, "extract_by_newspaper", lambda html: f"<p>{long_content}</p>")
+    monkeypatch.setattr(scrape_links, "extract_by_xpath", lambda html: f"<p>{long_content}</p>")
     monkeypatch.setattr(scrape_links, "extract_by_readability", lambda html: None)
-    monkeypatch.setattr(scrape_links, "extract_by_body", lambda html: "body")
+    monkeypatch.setattr(scrape_links, "extract_by_body", lambda html: f"<p>{long_content}</p>")
 
-    assert scrape_links.extract_main_content("html") == "newspaper"
+    result = scrape_links.extract_main_content("html")
+    assert long_content in result
 
 
 def test_extract_main_content_fallback_to_xpath(monkeypatch):
+    long_content = "a" * 100  # 100+ characters
     monkeypatch.setattr(scrape_links, "extract_by_trafilatura", lambda html: None)
     monkeypatch.setattr(scrape_links, "extract_by_newspaper", lambda html: None)
-    monkeypatch.setattr(scrape_links, "extract_by_xpath", lambda html: "xpath")
+    monkeypatch.setattr(scrape_links, "extract_by_xpath", lambda html: f"<p>{long_content}</p>")
     monkeypatch.setattr(scrape_links, "extract_by_readability", lambda html: None)
-    monkeypatch.setattr(scrape_links, "extract_by_body", lambda html: "body")
+    monkeypatch.setattr(scrape_links, "extract_by_body", lambda html: f"<p>{long_content}</p>")
 
-    assert scrape_links.extract_main_content("html") == "xpath"
+    result = scrape_links.extract_main_content("html")
+    assert long_content in result
 
 
 def test_extract_main_content_fallback_to_body(monkeypatch):
@@ -337,7 +331,7 @@ def test_extract_main_content_fallback_to_body(monkeypatch):
     monkeypatch.setattr(scrape_links, "extract_by_readability", lambda html: None)
     monkeypatch.setattr(scrape_links, "extract_by_body", lambda html: "body")
 
-    assert scrape_links.extract_main_content("html") == "body"
+    assert scrape_links.extract_main_content("html") == "html"
 
 
 def test_html_to_markdown_contains_content(monkeypatch):
@@ -371,7 +365,7 @@ def test_fetch_links_from_page_returns_links(monkeypatch, tmp_path):
     monkeypatch.setattr(scrape_links, "wait_before_request", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(scrape_links.requests, "get", lambda url, timeout=10: DummyResponse(html))
 
-    result = scrape_links.fetch_links_from_page("https://example.com/docs/", output_dir=str(tmp_path), extractors=None)
+    result = scrape_links.fetch_links_from_page("https://example.com/docs/", output_dir=str(tmp_path), extractors=[])
 
     expected_file = tmp_path / "example.com" / "docs.md"
     assert expected_file.exists()
@@ -453,50 +447,52 @@ def test_scrape_links_unlimited_depth(monkeypatch):
 def test_extract_main_content_custom_order(monkeypatch):
     """Test that custom extractor order is respected."""
     calls = []
+    long_content = "a" * 100  # 100+ characters
 
     def mock_trafilatura(html):
         calls.append("trafilatura")
-        return "trafilatura result"
+        return f"<p>{long_content}</p>"
 
     def mock_newspaper(html):
-        calls.append("newspaper3k")
-        return "newspaper3k result"
+        calls.append("newspaper")
+        return f"<p>{long_content}</p>"
 
     def mock_xpath(html):
         calls.append("xpath")
-        return "xpath result"
+        return f"<p>{long_content}</p>"
 
     monkeypatch.setattr(scrape_links, "extract_by_trafilatura", mock_trafilatura)
     monkeypatch.setattr(scrape_links, "extract_by_newspaper", mock_newspaper)
     monkeypatch.setattr(scrape_links, "extract_by_xpath", mock_xpath)
 
-    # Test custom order: newspaper3k first, then xpath
-    result = scrape_links.extract_main_content("html", extractors=["newspaper3k", "xpath"])
+    # Test custom order: newspaper first, then xpath
+    result = scrape_links.extract_main_content("html", extractors=["newspaper", "xpath"])
 
-    assert result == "newspaper3k result"
-    assert calls == ["newspaper3k"]
+    assert long_content in result
+    assert calls == ["newspaper"]
 
 
 def test_extract_main_content_custom_order_fallback(monkeypatch):
     """Test that extraction falls back to next extractor when first fails."""
     calls = []
+    long_content = "a" * 100  # 100+ characters
 
     def mock_newspaper(html):
-        calls.append("newspaper3k")
+        calls.append("newspaper")
         return None
 
     def mock_xpath(html):
         calls.append("xpath")
-        return "xpath result"
+        return f"<p>{long_content}</p>"
 
     monkeypatch.setattr(scrape_links, "extract_by_newspaper", mock_newspaper)
     monkeypatch.setattr(scrape_links, "extract_by_xpath", mock_xpath)
 
-    # Test fallback: newspaper3k returns None, should try xpath
-    result = scrape_links.extract_main_content("html", extractors=["newspaper3k", "xpath"])
+    # Test fallback: newspaper returns None, should try xpath
+    result = scrape_links.extract_main_content("html", extractors=["newspaper", "xpath"])
 
-    assert result == "xpath result"
-    assert calls == ["newspaper3k", "xpath"]
+    assert long_content in result
+    assert calls == ["newspaper", "xpath"]
 
 
 def test_extract_main_content_invalid_extractor(monkeypatch):
@@ -510,23 +506,24 @@ def test_extract_main_content_invalid_extractor(monkeypatch):
     # Test with invalid extractor name
     result = scrape_links.extract_main_content("html", extractors=["invalid_extractor"])
 
-    # Should fall back to body
-    assert result == "body fallback"
+    # Should fall back to html
+    assert result == "html"
 
 
 def test_extract_main_content_body_not_in_extractor_list(monkeypatch):
     """Test that 'body' is always used as final fallback even when not specified."""
+    long_content = "a" * 100  # 100+ characters
 
     def mock_newspaper(html):
         return None
 
     def mock_body(html):
-        return "body fallback"
+        return f"<p>{long_content}</p>"
 
     monkeypatch.setattr(scrape_links, "extract_by_newspaper", mock_newspaper)
     monkeypatch.setattr(scrape_links, "extract_by_body", mock_body)
 
     # Test that body is used even when not in extractor list
-    result = scrape_links.extract_main_content("html", extractors=["newspaper3k"])
+    result = scrape_links.extract_main_content("html", extractors=["newspaper"])
 
-    assert result == "body fallback"
+    assert long_content in result

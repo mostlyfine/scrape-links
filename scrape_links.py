@@ -27,10 +27,18 @@ import trafilatura
 
 logger = logging.getLogger(__name__)
 
+# Minimum content length threshold for extracted content
+MIN_CONTENT_LENGTH = 100
 
-def wait_before_request(max_delay: float = 3.0) -> None:
-    """Wait for a random duration (1 to max_delay seconds) before making a request."""
-    delay = random.uniform(1.0, max_delay)
+
+# Rate limiting constants
+MIN_DELAY_SECONDS = 1.0
+MAX_DELAY_SECONDS = 3.0
+
+
+def wait_before_request(max_delay: float = MAX_DELAY_SECONDS) -> None:
+    """Wait for a random duration (MIN_DELAY_SECONDS to max_delay seconds) before making a request."""
+    delay = random.uniform(MIN_DELAY_SECONDS, max_delay)
     logger.debug(f"Waiting {delay:.2f} seconds before request...")
     time.sleep(delay)
 
@@ -90,16 +98,8 @@ def calculate_depth(base_url: str, target_url: str) -> int:
     return relative_path.count('/') + 1 if relative_path else 0
 
 
-def save_page_as_markdown(url: str, html_content: str, output_dir: str = "output", skip_existing: bool = False, extractors: Optional[list[str]] = None) -> None:
-    """Save a web page as markdown file.
-
-    Args:
-        url: The URL of the page to save
-        html_content: The HTML content of the page
-        output_dir: Directory to save the markdown file (default: "output")
-        skip_existing: If True, skip saving if file already exists (default: False, overwrite)
-        extractors: List of extractor names to try in order (optional)
-    """
+def save_page_as_markdown(url: str, html_content: str, output_dir: str = "output", skip_existing: bool = False, extractors: Optional[list[str]] = []) -> None:
+    """Save a web page as markdown file."""
     filepath = url_to_filepath(url, output_dir)
 
     if skip_existing and filepath.exists():
@@ -122,19 +122,8 @@ def save_page_as_markdown(url: str, html_content: str, output_dir: str = "output
         logger.warning(f"Failed to save markdown for {url} - {e}")
 
 
-def fetch_links_from_page(url: str, output_dir: Optional[str] = None, skip_existing: bool = False, extractors: Optional[list[str]] = None) -> Set[str]:
-    """Extract absolute links from a single page and optionally save as markdown.
-
-    Args:
-        url: The URL to fetch
-        output_dir: Directory to save the markdown file (optional)
-        skip_existing: If True, skip saving if file already exists (default: False, overwrite)
-        extractors: List of extractor names to try in order (optional)
-
-    Returns:
-        Set of absolute URLs found on the page
-    """
-
+def fetch_links_from_page(url: str, output_dir: Optional[str] = [], skip_existing: bool = False, extractors: Optional[list[str]] = None) -> Set[str]:
+    """Extract absolute links from a single page and optionally save as markdown."""
     try:
         wait_before_request()
         response = requests.get(url, timeout=10)
@@ -233,44 +222,24 @@ def extract_by_xpath(html_content: str) -> Optional[str]:
         for selector in selectors:
             element = soup.select_one(selector)
             if element:
-                text_length = len(element.get_text(strip=True))
-                if text_length >= 100:
-                    logger.debug(
-                        f"Content extraction: selector '{selector}' (length={text_length})")
-                    return str(element)
-
-        logger.debug("Content extraction: no suitable selector element found")
-        return None
-
+                return str(element)
     except Exception as e:
         logger.debug(f"Selector-based extraction error: {e}")
         return None
+
+    return None
 
 
 def extract_by_trafilatura(html_content: str) -> Optional[str]:
     """Extract main content using trafilatura for text extraction."""
     try:
         extracted = trafilatura.extract(
-            html_content, include_images=True, include_tables=True, output_format='html')
-
-        if extracted:
-            soup = BeautifulSoup(extracted, 'html.parser')
-            text_length = len(soup.get_text(strip=True))
-            if text_length >= 100:
-                logger.debug(
-                    f"Content extraction: trafilatura (length={text_length})")
-                return extracted
-            else:
-                logger.debug(
-                    f"Content extraction: trafilatura result too short (length={text_length})")
-                return None
-        else:
-            logger.debug("Content extraction: trafilatura returned empty text")
-            return None
-
+            html_content, include_images=True, output_format='markdown')
+        return extracted
     except Exception as e:
         logger.debug(f"Trafilatura extraction error: {e}")
-        return None
+
+    return None
 
 
 def extract_by_newspaper(html_content: str) -> Optional[str]:
@@ -279,56 +248,23 @@ def extract_by_newspaper(html_content: str) -> Optional[str]:
         article = Article()
         article.set_html(html_content)
         article.nlp()
-
-        if article.text:
-            text_length = len(article.text.strip())
-            if text_length >= 100:
-                logger.debug(
-                    f"Content extraction: newspaper3k (length={text_length})")
-                # Convert plain text to simple HTML for consistency with other methods
-                html_output = f"<article>{article.text}</article>"
-                return html_output
-            else:
-                logger.debug(
-                    f"Content extraction: newspaper3k result too short (length={text_length})")
-                return None
-        else:
-            logger.debug("Content extraction: newspaper3k returned empty text")
-            return None
-
+        return article.text
     except Exception as e:
         logger.debug(f"Newspaper3k extraction error: {e}")
-        return None
+
+    return None
 
 
 def extract_by_readability(html_content: str) -> Optional[str]:
     """Extract main content using readability-lxml for heuristic-based extraction."""
-    readability_logger = logging.getLogger('readability.readability')
-    original_level = readability_logger.level
-    readability_logger.setLevel(logging.WARNING)
-
     try:
         doc = Document(html_content)
         main_content = doc.summary()
-
-        soup = BeautifulSoup(main_content, 'html.parser')
-        text_length = len(soup.get_text(strip=True))
-
-        if text_length >= 100:
-            logger.debug(
-                f"Content extraction: readability (length={text_length})")
-            return main_content
-        else:
-            logger.debug(
-                f"Content extraction: readability result too short (length={text_length})")
-            return None
-
+        return main_content
     except Exception as e:
         logger.debug(f"Readability extraction error: {e}")
-        return None
 
-    finally:
-        readability_logger.setLevel(original_level)
+    return None
 
 
 def extract_by_body(html_content: str) -> str:
@@ -337,67 +273,58 @@ def extract_by_body(html_content: str) -> str:
         soup = BeautifulSoup(html_content, 'html.parser')
         body = soup.find('body')
         if body:
-            logger.debug("Content extraction: body fallback")
             return str(body)
-        else:
-            logger.warning("Body element not found; using full HTML")
-            return html_content
     except Exception as e:
         logger.warning(f"Body extraction error: {e}; using full HTML")
-        return html_content
+
+    return None
 
 
-def extract_main_content(html_content: str, extractors: Optional[list[str]] = None) -> str:
-    """High-level main content extraction pipeline with configurable extractor order.
-
-    Args:
-        html_content: The HTML content to extract from
-        extractors: List of extractor names to try in order (default: trafilatura > readability > newspaper3k > xpath)
-                   Valid names: 'trafilatura', 'newspaper3k', 'xpath', 'readability'
-                   Note: 'body' fallback is always used as the final fallback and cannot be specified
-
-    Returns:
-        Extracted content as HTML string
-    """
-    if extractors is None:
-        extractors = ["trafilatura", "readability", "newspaper3k", "xpath"]
+def extract_main_content(html_content: str, extractors: Optional[list[str]] = []) -> str:
+    """High-level main content extraction pipeline with configurable extractor order."""
+    extractors.append("xpath")
+    extractors.append("body")
 
     # Map extractor names to functions (excluding 'body' which is always the final fallback)
     extractor_map = {
         "trafilatura": lambda: extract_by_trafilatura(html_content),
-        "newspaper3k": lambda: extract_by_newspaper(html_content),
+        "newspaper": lambda: extract_by_newspaper(html_content),
+        "readability": lambda: extract_by_readability(html_content),
         "xpath": lambda: extract_by_xpath(html_content),
-        "readability": lambda: extract_by_readability(html_content)
+        "body": lambda: extract_by_body(html_content),
     }
 
-    # Try extractors in specified order
+    logger.debug(f"Extractors: {', '.join(extractors)}")
     for extractor_name in extractors:
         if extractor_name in extractor_map:
             result = extractor_map[extractor_name]()
             if result:
-                logger.debug(
-                    f"Content extracted successfully using: {extractor_name}")
-                return result
+                soup = BeautifulSoup(result, 'html.parser')
+                text_content = soup.get_text(strip=True)
+                if len(text_content) >= MIN_CONTENT_LENGTH:
+                    logger.debug(
+                        f"Content extracted successfully using: {extractor_name}")
+                    return result
+                else:
+                    logger.debug(
+                        f"{extractor_name} result too short (length={len(text_content)})")
         else:
             logger.warning(f"Unknown extractor name: {extractor_name}")
 
     # Final fallback to body (always used when all other extractors fail)
     logger.debug("All extractors failed; using body fallback")
-    return extract_by_body(html_content)
+    return html_content
 
 
-def html_to_markdown(html_content: str, url: str, extractors: Optional[list[str]] = None) -> str:
-    """Convert HTML to Markdown (GFM style) using extracted main content only.
-
-    Args:
-        html_content: The HTML content to convert
-        url: The URL of the page
-        extractors: List of extractor names to try in order (optional)
-
-    Returns:
-        Markdown formatted text
-    """
+def html_to_markdown(html_content: str, url: str, extractors: Optional[list[str]] = []) -> str:
+    """Convert HTML to Markdown (GFM style) using extracted main content only."""
     main_content_html = extract_main_content(html_content, extractors)
+
+    # If main_content_html is already markdown (not HTML), return as-is
+    if main_content_html and not main_content_html.strip().startswith('<'):
+        logger.debug(
+            "Content is already markdown format; skipping html2text conversion")
+        return main_content_html
 
     h = html2text.HTML2Text()
     h.ignore_links = False      # Preserve links
@@ -415,19 +342,8 @@ def html_to_markdown(html_content: str, url: str, extractors: Optional[list[str]
     return markdown
 
 
-def scrape_links(base_url: str, max_depth: int = 0, output_dir: Optional[str] = None, skip_existing: bool = False, extractors: Optional[list[str]] = None) -> Set[str]:
-    """Recursively scrape links under the given base URL up to max_depth (-1 = unlimited).
-
-    Args:
-        base_url: The base URL to start scraping from
-        max_depth: Maximum depth to scrape (0=this page only, -1=unlimited, default: 0)
-        output_dir: Directory to save markdown files (optional)
-        skip_existing: If True, skip saving if file already exists (default: False, overwrite)
-        extractors: List of extractor names to try in order (optional)
-
-    Returns:
-        Set of all discovered URLs
-    """
+def scrape_links(base_url: str, max_depth: int = 0, output_dir: Optional[str] = None, skip_existing: bool = False, extractors: Optional[list[str]] = []) -> Set[str]:
+    """Recursively scrape links under the given base URL up to max_depth (-1 = unlimited)."""
     visited = set()
     all_links = set()
     queue = deque([(base_url, 0)])
@@ -437,8 +353,6 @@ def scrape_links(base_url: str, max_depth: int = 0, output_dir: Optional[str] = 
 
     logger.debug(f"Scraping start: {base_url}")
     logger.debug(f"Max depth: {'unlimited' if is_unlimited else max_depth}")
-    if extractors:
-        logger.debug(f"Extractors: {', '.join(extractors)}")
 
     while queue:
         current_url, current_depth = queue.popleft()
@@ -506,9 +420,8 @@ Examples:
         type=str,
         metavar='EXTRACTORS',
         help='Comma-separated list of extractors to try in order (e.g., "trafilatura,newspaper,xpath"). '
-             'Valid values: trafilatura, newspaper (or newspaper3k), xpath, readability. '
-             'Default: trafilatura,readability,newspaper3k,xpath '
-             '(Note: body fallback is always used as final fallback)'
+             'Valid values: trafilatura, newspaper, xpath, readability. '
+             'Default: trafilatura,readability,newspaper,xpath'
     )
     parser.add_argument(
         '-v', '--verbose',
@@ -539,23 +452,16 @@ Examples:
         sys.exit(1)
 
     # Parse extractors list if provided
-    extractors_list = None
+    extractors_list = ["trafilatura", "readability", "newspaper"]
     if args.extractors:
         extractors_list = [e.strip() for e in args.extractors.split(',')]
-        # Normalize 'newspaper' to 'newspaper3k'
-        extractors_list = ['newspaper3k' if e ==
-                           'newspaper' else e for e in extractors_list]
         valid_extractors = {'trafilatura',
-                            'newspaper3k', 'xpath', 'readability'}
+                            'newspaper', 'readability', 'xpath'}
         invalid = [e for e in extractors_list if e not in valid_extractors]
         if invalid:
             logger.error(f"Invalid extractor names: {', '.join(invalid)}")
             logger.error(
                 f"Valid extractors: {', '.join(sorted(valid_extractors))}")
-            logger.error(
-                "Note: 'newspaper' is also accepted as an alias for 'newspaper3k'")
-            logger.error(
-                "Note: 'body' fallback is always used as final fallback and cannot be specified")
             sys.exit(1)
 
     try:
