@@ -5,6 +5,7 @@ Features:
     * Breadth-first traversal with depth limit (or unlimited when -1)
     * Optional saving of each fetched page as GitHub Flavored Markdown
     * Five-stage content extraction (trafilatura > readability > newspaper3k > CSS selector > body fallback)
+    * By default, uses requests library; optionally use Selenium with --selenium for JavaScript-rendered pages
     * By default, overwrites existing markdown files; use --skip-existing to skip them
 """
 
@@ -24,6 +25,12 @@ import html2text
 from readability import Document
 from newspaper import Article
 import trafilatura
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
 
 logger = logging.getLogger(__name__)
 
@@ -122,23 +129,37 @@ def save_page_as_markdown(url: str, html_content: str, output_dir: str = "output
         logger.warning(f"Failed to save markdown for {url} - {e}")
 
 
-def fetch_links_from_page(url: str, output_dir: Optional[str] = [], skip_existing: bool = False, extractors: Optional[list[str]] = None) -> Set[str]:
-    """Extract absolute links from a single page and optionally save as markdown."""
-    try:
-        wait_before_request()
+def fetch_html_content(url: str, driver: Optional[webdriver.Chrome] = None) -> str:
+    """Fetch HTML content from a URL using either Selenium or requests."""
+    wait_before_request()
+
+    if driver:
+        driver.get(url)
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "body"))
+        )
+        time.sleep(2)
+        return driver.page_source
+    else:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
+        return response.text
+
+
+def fetch_links_from_page(url: str, output_dir: Optional[str] = [], skip_existing: bool = False, extractors: Optional[list[str]] = None, driver: Optional[webdriver.Chrome] = None) -> Set[str]:
+    """Extract absolute links from a single page and optionally save as markdown."""
+    try:
+        html_content = fetch_html_content(url, driver)
 
         # Save as markdown if an output directory is provided (before parsing to reuse content)
         if output_dir is not None:
             logger.debug(f"Saving page as markdown: {url}")
-            save_page_as_markdown(url, response.text,
+            save_page_as_markdown(url, html_content,
                                   output_dir, skip_existing, extractors)
 
-        # Extract links from the same response
-        soup = BeautifulSoup(response.content, 'html.parser')
-
+        # Extract links
         links = set()
+        soup = BeautifulSoup(html_content, 'html.parser')
         for anchor in soup.find_all('a', href=True):
             href = anchor['href']
             absolute_url = urljoin(url, href)
@@ -342,7 +363,20 @@ def html_to_markdown(html_content: str, url: str, extractors: Optional[list[str]
     return markdown
 
 
-def scrape_links(base_url: str, max_depth: int = 0, output_dir: Optional[str] = None, skip_existing: bool = False, extractors: Optional[list[str]] = []) -> Set[str]:
+def create_driver() -> webdriver.Chrome:
+    """Create and configure Chrome WebDriver."""
+    options = Options()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--window-size=1920,1080')
+
+    driver = webdriver.Chrome(options=options)
+    return driver
+
+
+def scrape_links(base_url: str, max_depth: int = 0, output_dir: Optional[str] = None, skip_existing: bool = False, extractors: Optional[list[str]] = [], use_selenium: bool = False) -> Set[str]:
     """Recursively scrape links under the given base URL up to max_depth (-1 = unlimited)."""
     visited = set()
     all_links = set()
@@ -353,29 +387,45 @@ def scrape_links(base_url: str, max_depth: int = 0, output_dir: Optional[str] = 
 
     logger.debug(f"Scraping start: {base_url}")
     logger.debug(f"Max depth: {'unlimited' if is_unlimited else max_depth}")
+    logger.debug(f"Using Selenium: {use_selenium}")
 
-    while queue:
-        current_url, current_depth = queue.popleft()
+    driver = None
+    if use_selenium:
+        try:
+            driver = create_driver()
+            logger.debug("Chrome WebDriver initialized successfully")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Chrome WebDriver: {e}")
+            logger.warning("Falling back to requests library")
+            use_selenium = False
 
-        if current_url in visited:
-            continue
+    try:
+        while queue:
+            current_url, current_depth = queue.popleft()
 
-        visited.add(current_url)
-        all_links.add(current_url)
+            if current_url in visited:
+                continue
 
-        print(current_url)
+            visited.add(current_url)
+            all_links.add(current_url)
 
-        links = fetch_links_from_page(
-            current_url, output_dir=output_dir, skip_existing=skip_existing, extractors=extractors)
+            print(current_url)
 
-        if not is_unlimited and current_depth >= max_depth:
-            continue
+            links = fetch_links_from_page(
+                current_url, output_dir=output_dir, skip_existing=skip_existing, extractors=extractors, driver=driver)
 
-        for link in links:
-            if link not in visited and is_child_path(base_url, link):
-                depth = calculate_depth(base_url, link)
-                if is_unlimited or depth <= max_depth:
-                    queue.append((link, depth))
+            if not is_unlimited and current_depth >= max_depth:
+                continue
+
+            for link in links:
+                if link not in visited and is_child_path(base_url, link):
+                    depth = calculate_depth(base_url, link)
+                    if is_unlimited or depth <= max_depth:
+                        queue.append((link, depth))
+    finally:
+        if driver:
+            driver.quit()
+            logger.debug("Chrome WebDriver closed")
 
     return all_links
 
@@ -396,8 +446,8 @@ Examples:
   # Depth 1 (immediate children)
   %(prog)s -d 1 -o saved_docs https://example.com/docs/
 
-  # Full options (depth, output, skip existing, extractors, verbose)
-  %(prog)s -d 2 -o saved_docs -s -e trafilatura,readability -v https://example.com/docs/
+  # Full options (depth, output, extractors, selenium)
+  %(prog)s -d 2 -o saved_docs -e trafilatura,readability --selenium https://example.com/docs/
         '''
     )
     parser.add_argument('url', help='Base URL to scrape')
@@ -433,6 +483,11 @@ Examples:
         action='store_true',
         help='Skip saving files that already exist (default: overwrite existing files)'
     )
+    parser.add_argument(
+        '--selenium',
+        action='store_true',
+        help='Enable Selenium to fetch rendered HTML after DOM construction (default: use requests library)'
+    )
 
     args = parser.parse_args()
 
@@ -466,7 +521,8 @@ Examples:
 
     try:
         links = scrape_links(args.url, args.depth, output_dir=args.output,
-                             skip_existing=args.skip_existing, extractors=extractors_list)
+                             skip_existing=args.skip_existing, extractors=extractors_list,
+                             use_selenium=args.selenium)
     except KeyboardInterrupt:
         logger.error("Interrupted")
         sys.exit(1)

@@ -392,7 +392,7 @@ def test_fetch_links_from_page_request_error(monkeypatch):
 def test_scrape_links_depth_zero(monkeypatch):
     calls = []
 
-    def fake_fetch(url, output_dir=None, skip_existing=False, extractors=None):
+    def fake_fetch(url, output_dir=None, skip_existing=False, extractors=None, driver=None):
         calls.append((url, output_dir))
         return {"https://example.com/docs/page1"}
 
@@ -410,7 +410,7 @@ def test_scrape_links_depth_one(monkeypatch):
         "https://example.com/docs/page1": set(),
     }
 
-    def fake_fetch(url, output_dir=None, skip_existing=False, extractors=None):
+    def fake_fetch(url, output_dir=None, skip_existing=False, extractors=None, driver=None):
         return responses[url]
 
     monkeypatch.setattr(scrape_links, "fetch_links_from_page", fake_fetch)
@@ -430,7 +430,7 @@ def test_scrape_links_unlimited_depth(monkeypatch):
         "https://example.com/docs/page2": set(),
     }
 
-    def fake_fetch(url, output_dir=None, skip_existing=False, extractors=None):
+    def fake_fetch(url, output_dir=None, skip_existing=False, extractors=None, driver=None):
         return responses[url]
 
     monkeypatch.setattr(scrape_links, "fetch_links_from_page", fake_fetch)

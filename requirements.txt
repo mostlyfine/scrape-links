@@ -4,3 +4,4 @@ html2text>=2020.1.16
 readability-lxml>=0.8.1
 newspaper3k>=0.2.8
 trafilatura>=2.0.0
+selenium>=4.0.0

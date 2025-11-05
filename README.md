@@ -8,6 +8,7 @@ A Python script that recursively crawls pages under a specified URL and saves th
 - **Depth Control**: Specify page hierarchy depth (0 to unlimited)
 - **High-Quality Content Extraction**: 5-stage fallback (trafilatura → readability → newspaper3k → CSS selectors → body)
 - **Configurable Extractors**: Customize extraction order with `-e` option
+- **JavaScript Support**: Use `--selenium` to fetch rendered HTML after JavaScript execution
 - **Markdown Conversion**: Converts HTML to GitHub Flavored Markdown
 - **Domain-Based Organization**: Output is organized by domain directory
 - **Flexible File Handling**: Overwrite by default; use `--skip-existing` to skip existing files
@@ -160,8 +161,20 @@ python scrape_links.py -d 1 -o saved_docs -e newspaper,xpath https://example.com
 python scrape_links.py -d 1 -o saved_docs -e trafilatura,readability https://example.com/docs/
 ```
 
-Valid extractors: `trafilatura`, `newspaper` (or `newspaper3k`), `xpath`, `readability`
-Default order: `trafilatura,readability,newspaper3k,xpath`
+Valid extractors: `trafilatura`, `newspaper`, `xpath`, `readability`
+Default order: `trafilatura,readability,newspaper`
+
+### Use Selenium for JavaScript-Rendered Pages
+
+```bash
+# Enable Selenium to fetch pages after JavaScript execution
+python scrape_links.py --selenium -d 1 -o saved_docs https://example.com/docs/
+
+# Combine with custom extractors
+python scrape_links.py --selenium -d 1 -o saved_docs -e trafilatura,readability https://example.com/docs/
+```
+
+**Note**: Selenium requires Chrome/Chromium to be installed on your system. The script runs Chrome in headless mode.
 
 ## Options
 
@@ -170,8 +183,9 @@ Default order: `trafilatura,readability,newspaper3k,xpath`
 | `url` | Base URL to scrape (required) |
 | `-d, --depth N` | Maximum depth (default: 0, -1 for unlimited) |
 | `-o [DIR], --output [DIR]` | Save extracted pages as markdown under `DIR`; omit `DIR` to use the default `output/` |
-| `-e EXTRACTORS, --extractors EXTRACTORS` | Comma-separated list of extractors (e.g., `newspaper,xpath`). Valid: `trafilatura`, `newspaper`, `xpath`, `readability`. Default: `trafilatura,readability,newspaper3k,xpath` |
+| `-e EXTRACTORS, --extractors EXTRACTORS` | Comma-separated list of extractors (e.g., `newspaper,xpath`). Valid: `trafilatura`, `newspaper`, `xpath`, `readability`. Default: `trafilatura,readability,newspaper` |
 | `-s, --skip-existing` | Skip saving files that already exist (default: overwrite existing files) |
+| `--selenium` | Enable Selenium to fetch rendered HTML after JavaScript execution (requires Chrome/Chromium) |
 | `-v, --verbose` | Show verbose logs |
 | `-h, --help` | Show help message |
 
