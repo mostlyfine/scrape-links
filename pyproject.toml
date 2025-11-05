@@ -5,14 +5,16 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "scrape-links"
 version = "0.1.0"
+description = "Recursively extract page links under a specified URL and save as Markdown"
 requires-python = ">=3.11"
 dependencies = [
-  "requests",
-  "beautifulsoup4",
-  "html2text",
-  "readability-lxml",
-  "newspaper3k",
-  "trafilatura"
+  "requests>=2.31.0",
+  "beautifulsoup4>=4.12.0",
+  "html2text>=2020.1.16",
+  "readability-lxml>=0.8.1",
+  "newspaper3k>=0.2.8",
+  "trafilatura>=2.0.0",
+  "selenium>=4.0.0"
 ]
 
 [tool.setuptools]
@@ -23,5 +25,6 @@ scrape-links = "scrape_links:main"
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=7.0"
+  "pytest>=7.0",
+  "pytest-mock>=3.10.0"
 ]
