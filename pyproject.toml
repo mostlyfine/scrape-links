@@ -10,7 +10,9 @@ dependencies = [
   "requests",
   "beautifulsoup4",
   "html2text",
-  "readability-lxml"
+  "readability-lxml",
+  "newspaper3k",
+  "trafilatura"
 ]
 
 [tool.setuptools]
@@ -18,3 +20,8 @@ py-modules = ["scrape_links"]
 
 [project.scripts]
 scrape-links = "scrape_links:main"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0"
+]

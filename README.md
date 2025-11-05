@@ -6,17 +6,18 @@ A Python script that recursively crawls pages under a specified URL and saves th
 
 - **Recursive Link Collection**: Automatically explores pages under the specified URL
 - **Depth Control**: Specify page hierarchy depth (0 to unlimited)
-- **High-Quality Content Extraction**: 3-stage fallback (readability → CSS selectors → body)
+- **High-Quality Content Extraction**: 5-stage fallback (trafilatura → readability → newspaper3k → CSS selectors → body)
+- **Configurable Extractors**: Customize extraction order with `-e` option
 - **Markdown Conversion**: Converts HTML to GitHub Flavored Markdown
 - **Domain-Based Organization**: Output is organized by domain directory
-- **Incremental Execution**: Existing files are automatically skipped
+- **Flexible File Handling**: Overwrite by default; use `--skip-existing` to skip existing files
 - **Rate Limiting**: Random delay (1-3 seconds) between requests to reduce server load
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.7 or higher
+- Python 3.11 or higher
 
 ### Install Dependencies
 
@@ -142,9 +143,25 @@ python scrape_links.py -d 1 -o saved_docs https://example.com/docs/
 
 # Save with verbose logging (default output directory)
 python scrape_links.py -d -1 -o -v https://example.com/docs/
+
+# Skip existing files (default: overwrite)
+python scrape_links.py -d 1 -o saved_docs -s https://example.com/docs/
 ```
 
 `-o` オプションの引数を省略すると、既定の `output/` ディレクトリに保存されます。
+
+### Customize Extractor Order
+
+```bash
+# Use newspaper3k first, then xpath
+python scrape_links.py -d 1 -o saved_docs -e newspaper,xpath https://example.com/docs/
+
+# Use only trafilatura and readability
+python scrape_links.py -d 1 -o saved_docs -e trafilatura,readability https://example.com/docs/
+```
+
+Valid extractors: `trafilatura`, `newspaper` (or `newspaper3k`), `xpath`, `readability`
+Default order: `trafilatura,readability,newspaper3k,xpath`
 
 ## Options
 
@@ -153,6 +170,8 @@ python scrape_links.py -d -1 -o -v https://example.com/docs/
 | `url` | Base URL to scrape (required) |
 | `-d, --depth N` | Maximum depth (default: 0, -1 for unlimited) |
 | `-o [DIR], --output [DIR]` | Save extracted pages as markdown under `DIR`; omit `DIR` to use the default `output/` |
+| `-e EXTRACTORS, --extractors EXTRACTORS` | Comma-separated list of extractors (e.g., `newspaper,xpath`). Valid: `trafilatura`, `newspaper`, `xpath`, `readability`. Default: `trafilatura,readability,newspaper3k,xpath` |
+| `-s, --skip-existing` | Skip saving files that already exist (default: overwrite existing files) |
 | `-v, --verbose` | Show verbose logs |
 | `-h, --help` | Show help message |
 
@@ -198,11 +217,15 @@ Content...
 
 ## Content Extraction Algorithm
 
-Content is extracted using a 3-stage fallback approach (prioritizing accuracy):
+Content is extracted using a 5-stage fallback approach (prioritizing accuracy):
 
-1. **readability-lxml**: Heuristic-based extraction using machine learning (prioritized for better accuracy)
-2. **CSS Selectors**: Extract using common selectors (`main`, `article`, `#content`, etc.)
-3. **body Element**: Use entire body element as final fallback
+1. **trafilatura**: Fast and accurate text extraction with support for images and tables
+2. **readability-lxml**: Heuristic-based extraction using machine learning
+3. **newspaper3k**: Article parsing with NLP-enhanced text extraction
+4. **CSS Selectors (xpath)**: Extract using common selectors (`main`, `article`, `#content`, etc.)
+5. **body Element**: Use entire body element as final fallback
+
+You can customize the extraction order using the `-e` option. The `body` fallback is always used when all other extractors fail and cannot be disabled.
 
 ### Rate Limiting
 
@@ -264,11 +287,17 @@ python scrape_links.py -d 1 -o -v https://docs.claude.com/en/docs/claude-code/ov
 
 ### Poor Markdown Quality
 
-Content extraction is attempted in 3 stages. If XPath extraction fails, it falls back to readability.
+Content extraction is attempted in 5 stages (trafilatura → readability → newspaper3k → xpath → body). You can customize the extraction order using the `-e` option.
 
-### Overwrite Existing Files
+### File Handling
 
-The current implementation automatically skips existing files. To overwrite, delete them first:
+By default, the script overwrites existing files. To skip existing files, use the `--skip-existing` option:
+
+```bash
+python scrape_links.py -d 1 -o saved_docs --skip-existing https://example.com/docs/
+```
+
+To force overwrite all files, delete them first:
 
 ```bash
 rm -rf output/

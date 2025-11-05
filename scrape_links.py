@@ -4,8 +4,8 @@
 Features:
     * Breadth-first traversal with depth limit (or unlimited when -1)
     * Optional saving of each fetched page as GitHub Flavored Markdown
-    * Three–stage content extraction (CSS selector > readability > body fallback)
-    * Skips already existing markdown files for incremental runs
+    * Five-stage content extraction (trafilatura > readability > newspaper3k > CSS selector > body fallback)
+    * By default, overwrites existing markdown files; use --skip-existing to skip them
 """
 
 import argparse
@@ -22,6 +22,8 @@ import requests
 from bs4 import BeautifulSoup
 import html2text
 from readability import Document
+from newspaper import Article
+import trafilatura
 
 logger = logging.getLogger(__name__)
 
@@ -88,29 +90,50 @@ def calculate_depth(base_url: str, target_url: str) -> int:
     return relative_path.count('/') + 1 if relative_path else 0
 
 
-def save_page_as_markdown(url: str, html_content: str, output_dir: str = "output") -> None:
-    """Save a web page as markdown file."""
+def save_page_as_markdown(url: str, html_content: str, output_dir: str = "output", skip_existing: bool = False, extractors: Optional[list[str]] = None) -> None:
+    """Save a web page as markdown file.
+
+    Args:
+        url: The URL of the page to save
+        html_content: The HTML content of the page
+        output_dir: Directory to save the markdown file (default: "output")
+        skip_existing: If True, skip saving if file already exists (default: False, overwrite)
+        extractors: List of extractor names to try in order (optional)
+    """
     filepath = url_to_filepath(url, output_dir)
-    if not filepath.exists():
-        try:
-            page_title = extract_page_title(html_content)
-            markdown_content = html_to_markdown(html_content, url)
 
-            filepath.parent.mkdir(parents=True, exist_ok=True)
-
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(f"# [{page_title}]({url})\n\n")
-                f.write(markdown_content)
-
-            logger.debug(f"Saved file: {filepath}")
-        except Exception as e:
-            logger.warning(f"Failed to save markdown for {url} - {e}")
-    else:
+    if skip_existing and filepath.exists():
         logger.debug(f"Skip (already exists): {filepath}")
+        return
+
+    try:
+        page_title = extract_page_title(html_content)
+        markdown_content = html_to_markdown(html_content, url, extractors)
+
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(f"# [{page_title}]({url})\n\n")
+            f.write(markdown_content)
+
+        action = "Skipped and saved" if skip_existing and filepath.exists() else "Saved"
+        logger.debug(f"{action} file: {filepath}")
+    except Exception as e:
+        logger.warning(f"Failed to save markdown for {url} - {e}")
 
 
-def fetch_links_from_page(url: str, output_dir: Optional[str] = None) -> Set[str]:
-    """Extract absolute links from a single page and optionally save as markdown."""
+def fetch_links_from_page(url: str, output_dir: Optional[str] = None, skip_existing: bool = False, extractors: Optional[list[str]] = None) -> Set[str]:
+    """Extract absolute links from a single page and optionally save as markdown.
+
+    Args:
+        url: The URL to fetch
+        output_dir: Directory to save the markdown file (optional)
+        skip_existing: If True, skip saving if file already exists (default: False, overwrite)
+        extractors: List of extractor names to try in order (optional)
+
+    Returns:
+        Set of absolute URLs found on the page
+    """
 
     try:
         wait_before_request()
@@ -120,7 +143,8 @@ def fetch_links_from_page(url: str, output_dir: Optional[str] = None) -> Set[str
         # Save as markdown if an output directory is provided (before parsing to reuse content)
         if output_dir is not None:
             logger.debug(f"Saving page as markdown: {url}")
-            save_page_as_markdown(url, response.text, output_dir)
+            save_page_as_markdown(url, response.text,
+                                  output_dir, skip_existing, extractors)
 
         # Extract links from the same response
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -192,6 +216,8 @@ def extract_by_xpath(html_content: str) -> Optional[str]:
             'main',
             'article',
             '[role="main"]',
+            '#main',
+            '.main',
             '#content',
             '.content',
             '#contents',
@@ -218,6 +244,60 @@ def extract_by_xpath(html_content: str) -> Optional[str]:
 
     except Exception as e:
         logger.debug(f"Selector-based extraction error: {e}")
+        return None
+
+
+def extract_by_trafilatura(html_content: str) -> Optional[str]:
+    """Extract main content using trafilatura for text extraction."""
+    try:
+        extracted = trafilatura.extract(
+            html_content, include_images=True, include_tables=True, output_format='html')
+
+        if extracted:
+            soup = BeautifulSoup(extracted, 'html.parser')
+            text_length = len(soup.get_text(strip=True))
+            if text_length >= 100:
+                logger.debug(
+                    f"Content extraction: trafilatura (length={text_length})")
+                return extracted
+            else:
+                logger.debug(
+                    f"Content extraction: trafilatura result too short (length={text_length})")
+                return None
+        else:
+            logger.debug("Content extraction: trafilatura returned empty text")
+            return None
+
+    except Exception as e:
+        logger.debug(f"Trafilatura extraction error: {e}")
+        return None
+
+
+def extract_by_newspaper(html_content: str) -> Optional[str]:
+    """Extract main content using newspaper3k for article parsing."""
+    try:
+        article = Article()
+        article.set_html(html_content)
+        article.nlp()
+
+        if article.text:
+            text_length = len(article.text.strip())
+            if text_length >= 100:
+                logger.debug(
+                    f"Content extraction: newspaper3k (length={text_length})")
+                # Convert plain text to simple HTML for consistency with other methods
+                html_output = f"<article>{article.text}</article>"
+                return html_output
+            else:
+                logger.debug(
+                    f"Content extraction: newspaper3k result too short (length={text_length})")
+                return None
+        else:
+            logger.debug("Content extraction: newspaper3k returned empty text")
+            return None
+
+    except Exception as e:
+        logger.debug(f"Newspaper3k extraction error: {e}")
         return None
 
 
@@ -267,23 +347,57 @@ def extract_by_body(html_content: str) -> str:
         return html_content
 
 
-def extract_main_content(html_content: str) -> str:
-    """High-level main content extraction pipeline (selector > readability > body fallback)."""
-    # 1. Readability heuristic
-    result = extract_by_readability(html_content)
-    if result:
-        return result
-    # 2. Selector-based attempt
-    result = extract_by_xpath(html_content)
-    if result:
-        return result
-    # 3. Body fallback
+def extract_main_content(html_content: str, extractors: Optional[list[str]] = None) -> str:
+    """High-level main content extraction pipeline with configurable extractor order.
+
+    Args:
+        html_content: The HTML content to extract from
+        extractors: List of extractor names to try in order (default: trafilatura > readability > newspaper3k > xpath)
+                   Valid names: 'trafilatura', 'newspaper3k', 'xpath', 'readability'
+                   Note: 'body' fallback is always used as the final fallback and cannot be specified
+
+    Returns:
+        Extracted content as HTML string
+    """
+    if extractors is None:
+        extractors = ["trafilatura", "readability", "newspaper3k", "xpath"]
+
+    # Map extractor names to functions (excluding 'body' which is always the final fallback)
+    extractor_map = {
+        "trafilatura": lambda: extract_by_trafilatura(html_content),
+        "newspaper3k": lambda: extract_by_newspaper(html_content),
+        "xpath": lambda: extract_by_xpath(html_content),
+        "readability": lambda: extract_by_readability(html_content)
+    }
+
+    # Try extractors in specified order
+    for extractor_name in extractors:
+        if extractor_name in extractor_map:
+            result = extractor_map[extractor_name]()
+            if result:
+                logger.debug(
+                    f"Content extracted successfully using: {extractor_name}")
+                return result
+        else:
+            logger.warning(f"Unknown extractor name: {extractor_name}")
+
+    # Final fallback to body (always used when all other extractors fail)
+    logger.debug("All extractors failed; using body fallback")
     return extract_by_body(html_content)
 
 
-def html_to_markdown(html_content: str, url: str) -> str:
-    """Convert HTML to Markdown (GFM style) using extracted main content only."""
-    main_content_html = extract_main_content(html_content)
+def html_to_markdown(html_content: str, url: str, extractors: Optional[list[str]] = None) -> str:
+    """Convert HTML to Markdown (GFM style) using extracted main content only.
+
+    Args:
+        html_content: The HTML content to convert
+        url: The URL of the page
+        extractors: List of extractor names to try in order (optional)
+
+    Returns:
+        Markdown formatted text
+    """
+    main_content_html = extract_main_content(html_content, extractors)
 
     h = html2text.HTML2Text()
     h.ignore_links = False      # Preserve links
@@ -301,8 +415,19 @@ def html_to_markdown(html_content: str, url: str) -> str:
     return markdown
 
 
-def scrape_links(base_url: str, max_depth: int = 0, output_dir: Optional[str] = None) -> Set[str]:
-    """Recursively scrape links under the given base URL up to max_depth (-1 = unlimited)."""
+def scrape_links(base_url: str, max_depth: int = 0, output_dir: Optional[str] = None, skip_existing: bool = False, extractors: Optional[list[str]] = None) -> Set[str]:
+    """Recursively scrape links under the given base URL up to max_depth (-1 = unlimited).
+
+    Args:
+        base_url: The base URL to start scraping from
+        max_depth: Maximum depth to scrape (0=this page only, -1=unlimited, default: 0)
+        output_dir: Directory to save markdown files (optional)
+        skip_existing: If True, skip saving if file already exists (default: False, overwrite)
+        extractors: List of extractor names to try in order (optional)
+
+    Returns:
+        Set of all discovered URLs
+    """
     visited = set()
     all_links = set()
     queue = deque([(base_url, 0)])
@@ -312,6 +437,8 @@ def scrape_links(base_url: str, max_depth: int = 0, output_dir: Optional[str] = 
 
     logger.debug(f"Scraping start: {base_url}")
     logger.debug(f"Max depth: {'unlimited' if is_unlimited else max_depth}")
+    if extractors:
+        logger.debug(f"Extractors: {', '.join(extractors)}")
 
     while queue:
         current_url, current_depth = queue.popleft()
@@ -322,10 +449,10 @@ def scrape_links(base_url: str, max_depth: int = 0, output_dir: Optional[str] = 
         visited.add(current_url)
         all_links.add(current_url)
 
-        logger.debug(f"Fetching (depth {current_depth}): {current_url}")
+        print(current_url)
 
         links = fetch_links_from_page(
-            current_url, output_dir=output_dir)
+            current_url, output_dir=output_dir, skip_existing=skip_existing, extractors=extractors)
 
         if not is_unlimited and current_depth >= max_depth:
             continue
@@ -346,20 +473,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
-  # Only the given page (default depth 0)
+  # Only the given page (show children links without saving)
   %(prog)s https://example.com/docs/
 
-  # Depth 1 (immediate children)
-  %(prog)s -d 1 https://example.com/docs/
-
-  # Unlimited (all descendants)
-  %(prog)s -d -1 https://example.com/docs/
-
   # Save extracted pages as markdown
+  %(prog)s -o saved_docs https://example.com/docs/
+
+  # Depth 1 (immediate children)
   %(prog)s -d 1 -o saved_docs https://example.com/docs/
 
-  # Verbose logging + save
-  %(prog)s -d -1 -o -v https://example.com/docs/
+  # Full options (depth, output, skip existing, extractors, verbose)
+  %(prog)s -d 2 -o saved_docs -s -e trafilatura,readability -v https://example.com/docs/
         '''
     )
     parser.add_argument('url', help='Base URL to scrape')
@@ -378,9 +502,23 @@ Examples:
         help='Save extracted pages as markdown under DIR (default when omitted: output)'
     )
     parser.add_argument(
+        '-e', '--extractors',
+        type=str,
+        metavar='EXTRACTORS',
+        help='Comma-separated list of extractors to try in order (e.g., "trafilatura,newspaper,xpath"). '
+             'Valid values: trafilatura, newspaper (or newspaper3k), xpath, readability. '
+             'Default: trafilatura,readability,newspaper3k,xpath '
+             '(Note: body fallback is always used as final fallback)'
+    )
+    parser.add_argument(
         '-v', '--verbose',
         action='store_true',
         help='Show verbose (DEBUG level) logs'
+    )
+    parser.add_argument(
+        '-s', '--skip-existing',
+        action='store_true',
+        help='Skip saving files that already exist (default: overwrite existing files)'
     )
 
     args = parser.parse_args()
@@ -400,19 +538,37 @@ Examples:
         logger.error("Depth must be -1 (unlimited) or an integer >= 0")
         sys.exit(1)
 
+    # Parse extractors list if provided
+    extractors_list = None
+    if args.extractors:
+        extractors_list = [e.strip() for e in args.extractors.split(',')]
+        # Normalize 'newspaper' to 'newspaper3k'
+        extractors_list = ['newspaper3k' if e ==
+                           'newspaper' else e for e in extractors_list]
+        valid_extractors = {'trafilatura',
+                            'newspaper3k', 'xpath', 'readability'}
+        invalid = [e for e in extractors_list if e not in valid_extractors]
+        if invalid:
+            logger.error(f"Invalid extractor names: {', '.join(invalid)}")
+            logger.error(
+                f"Valid extractors: {', '.join(sorted(valid_extractors))}")
+            logger.error(
+                "Note: 'newspaper' is also accepted as an alias for 'newspaper3k'")
+            logger.error(
+                "Note: 'body' fallback is always used as final fallback and cannot be specified")
+            sys.exit(1)
+
     try:
-        links = scrape_links(args.url, args.depth, output_dir=args.output)
+        links = scrape_links(args.url, args.depth, output_dir=args.output,
+                             skip_existing=args.skip_existing, extractors=extractors_list)
     except KeyboardInterrupt:
         logger.error("Interrupted")
         sys.exit(1)
 
-    logger.info(f"Discovered links: {len(links)}")
-
-    for link in sorted(links):
-        print(link)
+    logger.debug(f"Discovered links: {len(links)}")
 
     if args.output:
-        logger.info(f"Pages saved to: {args.output.rstrip('/')}/")
+        logger.debug(f"Pages saved to: {args.output.rstrip('/')}/")
 
 
 if __name__ == "__main__":
