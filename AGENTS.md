@@ -116,6 +116,23 @@ def html_to_markdown(html_content: str, url: str, extractors: Optional[list[str]
     return h.handle(main_content_html)
 ```
 
+## Python実行環境
+
+**⚠️ 重要: Python スクリプトを直接実行する場合は、必ず venv 環境を使用すること**
+
+```bash
+# venv環境の有効化
+source venv/bin/activate
+
+# venv環境でスクリプトを実行
+python scrape_links.py -d 1 -o https://example.com/
+```
+
+理由:
+- グローバル環境との依存関係の競合を回避
+- プロジェクト固有の依存関係を使用
+- newspaper3k などのサードパーティライブラリの警告を適切に管理
+
 ## エージェントによる使用例
 
 ### タスク1: ドキュメント収集

@@ -14,6 +14,7 @@ import logging
 import sys
 import time
 import random
+import warnings
 from collections import deque
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -266,10 +267,12 @@ def extract_by_trafilatura(html_content: str) -> Optional[str]:
 def extract_by_newspaper(html_content: str) -> Optional[str]:
     """Extract main content using newspaper3k for article parsing."""
     try:
-        article = Article()
-        article.set_html(html_content)
-        article.nlp()
-        return article.text
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=SyntaxWarning)
+            article = Article()
+            article.set_html(html_content)
+            article.nlp()
+            return article.text
     except Exception as e:
         logger.debug(f"Newspaper3k extraction error: {e}")
 
