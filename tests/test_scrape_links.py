@@ -363,7 +363,7 @@ def test_fetch_links_from_page_returns_links(monkeypatch, tmp_path):
     """
 
     monkeypatch.setattr(scrape_links, "wait_before_request", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(scrape_links.requests, "get", lambda url, timeout=10: DummyResponse(html))
+    monkeypatch.setattr(scrape_links.requests, "get", lambda url, headers=None, timeout=10: DummyResponse(html))
 
     result = scrape_links.fetch_links_from_page("https://example.com/docs/", output_dir=str(tmp_path), extractors=[])
 
